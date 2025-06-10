@@ -8,12 +8,14 @@ dotfiles? Same. So this is my attempted solution.
 
 ## Usage
 
-> [!WARN]
-> (NOT DONE, PLANNED)
+> [!WARNING]
+> Not done, however this is how it is planned to go
 
 - Add `include config-kanshi-gui` to your [kanshi config](https://man.archlinux.org/man/kanshi.5.en)
+  (and ignore that file in your `.gitignore` if wanted)
 - Open this GUI.
-- Create a new config and reload
+- Create a new config by dragging things and pressing buttons for current outputs
+- Reload
 
 ## Dependencies
 
