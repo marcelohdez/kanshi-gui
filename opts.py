@@ -1,0 +1,6 @@
+ENABLED = "enabled"
+MODE = "mode"
+POSITION = "position"
+SCALE = "scale"
+TRANSFORM = "transform"
+ADAPTIVE_SYNC = "adaptive_sync"
