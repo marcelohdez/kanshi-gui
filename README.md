@@ -8,14 +8,15 @@ dotfiles? Same. So this is my attempted solution.
 
 ## Usage
 
-> [!WARNING]
-> Not done, however this is how it is planned to go
+> [!IMPORTANT]
+> kanshi-gui will overwrite your regular kanshi config, and track state on its
+> own in `kanshi-gui.json`. This means you must choose to either edit your
+> kanshi config manually or use kanshi-gui. This may change in the future, but
+> would be overly complex.
 
-- Add `include config-kanshi-gui` to your [kanshi config](https://man.archlinux.org/man/kanshi.5.en)
-  (and ignore that file in your `.gitignore` if wanted)
 - Open this GUI.
 - Create a new config by dragging things and pressing buttons for current outputs
-- Reload
+- Apply
 
 ## Dependencies
 
