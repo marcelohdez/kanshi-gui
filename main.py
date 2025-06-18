@@ -1,24 +1,30 @@
 # import sys
 # import gui
-import kanshi
+import lib as kg
 
-output1 = kanshi.Output()
+output1 = kg.Output()
 output1.set_mode(1600, 900)
 output1.set_position(0, 0)
 output1.set_adaptive_sync(True)
 
-profile1 = kanshi.Profile()
+profile1 = kg.Profile()
 profile1.outputs["Some Company ASDF 4242"] = output1
 
-config = kanshi.Config()
+config = kg.Config()
 config.profiles.append(profile1)
 print(config)
 
-kanshi.write_configs_to_disk(config)
-read_config = kanshi.read_self_config()
+kg.write_configs_to_disk(config)
+
+try:
+    read_config = kg.read_self_config()
+except FileNotFoundError | KeyError | ValueError:
+    print("oops! failed to read kanshi-gui.json, starting new config.")
+    read_config = kg.Config()
+
 print(read_config)
 
 print("equal: ", config.to_dict() == read_config.to_dict())
 
-# app = gui.KanshiGui(application_id="me.marcelohdez.KanshiGui")
+# app = gui.kgGui(application_id="me.marcelohdez.kgGui")
 # app.run(sys.argv)
