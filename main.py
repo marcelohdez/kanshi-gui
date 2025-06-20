@@ -19,7 +19,7 @@ kg.write_configs_to_disk(config)
 try:
     read_config = kg.read_self_config()
 except FileNotFoundError | KeyError | ValueError:
-    print("oops! failed to read kanshi-gui.json, starting new config.")
+    print("oops! failed to read wlr-displays.json, starting new config.")
     read_config = kg.Config()
 
 print(read_config)
