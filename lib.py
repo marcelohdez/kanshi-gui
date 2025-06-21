@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from typing import Any
 from pathlib import Path
 import opts as o
@@ -7,8 +8,12 @@ import opts as o
 SELF_CONFIG_NAME = "wlr-displays.json"
 KANSHI_CONFIG_NAME = "config-wlr-displays"
 
+KANSHI_DESC_UNKNOWN = "Unkown"
+
 
 class Output:
+    """Represents a Kanshi output configuration."""
+
     def __init__(self):
         self._opts: dict[str, Any] = {}
         self.set_enabled(True)  # default to enabled
@@ -60,6 +65,41 @@ class Output:
         return "\n".join(lines)
 
 
+class Mode:
+    """Represents an available mode for a given output"""
+
+    def __init__(self, width: int, height: int, refresh: float, preferred: bool):
+        self.width = width
+        self.height = height
+        self.refresh = refresh
+        self.preferred = preferred
+
+    def __str__(self) -> str:
+        return f"{self.width}x{self.height}@{self.refresh} {'(preferred)' if self.preferred else ''}"
+
+
+class OutputState:
+    """
+    Stores the state of an output, including its available modes. Does not
+    directly translate to a Kanshi output configuration
+    """
+
+    def __init__(self, state: Output, modes: list[Mode]):
+        self.state = state
+        self.modes = modes
+
+    def __str__(self) -> str:
+        output = [str(self.state)]
+
+        for mode in self.modes:
+            output.append(str(mode))
+
+        return "\n".join(output)
+
+    def to_kanshi_output(self) -> Output:
+        return self.state
+
+
 class Profile:
     def __init__(self):
         self.outputs: dict[str, Output] = {}
@@ -103,6 +143,53 @@ class Config:
             output.append("}\n")
 
         return "\n".join(output)
+
+
+def get_current_state() -> dict[str, OutputState]:
+    """Will return the current state of all outputs using wlr-randr"""
+    state: dict[str, OutputState] = {}
+
+    cmd = ["wlr-randr", "--json"]
+    state_json = json.loads(subprocess.run(cmd, capture_output=True, check=True).stdout)
+
+    for output_json in state_json:
+        output_state = Output()
+        modes = []
+
+        # collect basic output state
+        output_state.set_adaptive_sync(output_json["adaptive_sync"])
+        output_state.set_enabled(output_json["enabled"])
+        output_state.set_transform(output_json["transform"])
+        output_state.set_scale(output_json["scale"])
+        output_state.set_position(
+            output_json["position"]["x"], output_json["position"]["y"]
+        )
+
+        # collect all modes
+        for mode_json in output_json["modes"]:
+            width = mode_json["width"]
+            height = mode_json["height"]
+            refresh = mode_json["refresh"]
+            preferred = mode_json["preferred"]
+            current = mode_json["current"]
+
+            modes.append(Mode(width, height, refresh, preferred))
+
+            if current:
+                output_state.set_mode(width, height, refresh)
+
+        # get output description for kanshi
+        if output_json["name"].startswith("eDP-"):
+            description = output_json["name"]
+        else:
+            make = output_json["make"] or KANSHI_DESC_UNKNOWN
+            model = output_json["model"] or KANSHI_DESC_UNKNOWN
+            serial = output_json["serial"] or KANSHI_DESC_UNKNOWN
+            description = f"{make} {model} {serial}"
+
+        state[description] = OutputState(output_state, modes)
+
+    return state
 
 
 def get_config_home() -> Path:
