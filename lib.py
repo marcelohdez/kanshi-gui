@@ -11,6 +11,29 @@ KANSHI_CONFIG_NAME = "config-wlr-displays"
 KANSHI_DESC_UNKNOWN = "Unkown"
 
 
+class Mode:
+    """Represents an available mode for a given output"""
+
+    def __init__(self, width: int, height: int, refresh: float, preferred: bool):
+        self.width = width
+        self.height = height
+        self.refresh = refresh
+        self.preferred = preferred
+
+    def __str__(self) -> str:
+        return f"{self.width}x{self.height}@{self.refresh}Hz {'(preferred)' if self.preferred else ''}"
+
+    def __eq__(self, o) -> bool:
+        if not isinstance(o, Mode):
+            raise NotImplementedError
+
+        return (
+            self.width == o.width
+            and self.height == o.height
+            and self.refresh == o.refresh
+        )
+
+
 class Output:
     """Represents a Kanshi output configuration."""
 
@@ -21,8 +44,8 @@ class Output:
     def set_enabled(self, enabled: bool):
         self._opts[o.ENABLED] = enabled
 
-    def set_mode(self, width: int, height: int, rate: float | None = None):
-        self._opts[o.MODE] = [width, height, rate]
+    def set_mode(self, mode: Mode):
+        self._opts[o.MODE] = [mode.width, mode.height, mode.refresh]
 
     def set_position(self, x: int, y: int):
         self._opts[o.POSITION] = [x, y]
@@ -65,41 +88,6 @@ class Output:
         return "\n".join(lines)
 
 
-class Mode:
-    """Represents an available mode for a given output"""
-
-    def __init__(self, width: int, height: int, refresh: float, preferred: bool):
-        self.width = width
-        self.height = height
-        self.refresh = refresh
-        self.preferred = preferred
-
-    def __str__(self) -> str:
-        return f"{self.width}x{self.height}@{self.refresh} {'(preferred)' if self.preferred else ''}"
-
-
-class OutputState:
-    """
-    Stores the state of an output, including its available modes. Does not
-    directly translate to a Kanshi output configuration
-    """
-
-    def __init__(self, state: Output, modes: list[Mode]):
-        self.state = state
-        self.modes = modes
-
-    def __str__(self) -> str:
-        output = [str(self.state)]
-
-        for mode in self.modes:
-            output.append(str(mode))
-
-        return "\n".join(output)
-
-    def to_kanshi_output(self) -> Output:
-        return self.state
-
-
 class Profile:
     def __init__(self):
         self.outputs: dict[str, Output] = {}
@@ -126,10 +114,17 @@ class Profile:
 
         return "\n".join(output)
 
+    def __hash__(self) -> int:
+        result = 0
+        for desc in self.outputs.keys():
+            result += hash(desc)
+
+        return result
+
 
 class Config:
     def __init__(self):
-        self.profiles: list[Profile] = []
+        self.profiles: set[Profile] = set()
 
     def to_dict(self) -> dict:
         return {"profiles": [p.to_dict() for p in self.profiles]}
@@ -145,9 +140,32 @@ class Config:
         return "\n".join(output)
 
 
-def get_current_state() -> dict[str, OutputState]:
+class OutputStates:
+    """
+    Stores the state of outputs, including their available modes. Does not
+    directly translate to a Kanshi profile
+    """
+
+    def __init__(self):
+        self.outputs: dict[str, tuple[Output, list[Mode]]] = {}
+
+    def __str__(self) -> str:
+        lines = []
+
+        for desc, tup in self.outputs.items():
+            output, modes = tup
+            lines.append(desc)
+            lines.append(str(output))
+
+            for mode in modes:
+                lines.append(str(mode))
+
+        return "\n".join(lines)
+
+
+def get_current_state() -> OutputStates:
     """Will return the current state of all outputs using wlr-randr"""
-    state: dict[str, OutputState] = {}
+    state = OutputStates()
 
     cmd = ["wlr-randr", "--json"]
     state_json = json.loads(subprocess.run(cmd, capture_output=True, check=True).stdout)
@@ -173,10 +191,11 @@ def get_current_state() -> dict[str, OutputState]:
             preferred = mode_json["preferred"]
             current = mode_json["current"]
 
-            modes.append(Mode(width, height, refresh, preferred))
+            this_mode = Mode(width, height, refresh, preferred)
+            modes.append(this_mode)
 
             if current:
-                output_state.set_mode(width, height, refresh)
+                output_state.set_mode(this_mode)
 
         # get output description for kanshi
         if output_json["name"].startswith("eDP-"):
@@ -187,7 +206,7 @@ def get_current_state() -> dict[str, OutputState]:
             serial = output_json["serial"] or KANSHI_DESC_UNKNOWN
             description = f"{make} {model} {serial}"
 
-        state[description] = OutputState(output_state, modes)
+        state.outputs[description] = (output_state, modes)
 
     return state
 
@@ -216,29 +235,29 @@ def write_configs_to_disk(config: Config):
         f.write(json.dumps(config.to_dict()))
 
 
-def read_self_config() -> Config:
+def read_self_config() -> Config | None:
     """
     Will attempt to read wlr-displays.json, and turn it into a usable kanshi config,
-    however this function can fail, usually with either due to malformed json or
-    missing file, the caller should handle this.
+    however if unsuccessful it will instead return None.
     """
-    with open(get_config_home() / SELF_CONFIG_NAME, "r") as f:
-        config = Config()
-        config_json = json.loads(f.read())
+    try:
+        with open(get_config_home() / SELF_CONFIG_NAME, "r") as f:
+            config = Config()
+            config_json = json.loads(f.read())
 
-        profiles = []
-        for profile_json in config_json["profiles"]:
-            profile = Profile()
+            for profile_json in config_json["profiles"]:
+                profile = Profile()
 
-            for name, opts in profile_json["outputs"].items():
-                output = Output()
-                output._opts = opts
-                profile.outputs[name] = output
+                for name, opts in profile_json["outputs"].items():
+                    output = Output()
+                    output._opts = opts
+                    profile.outputs[name] = output
 
-            if profile_json["exec"]:
-                profile.exec = profile_json["exec"]
+                if profile_json["exec"]:
+                    profile.exec = profile_json["exec"]
 
-            profiles.append(profile)
+                config.profiles.add(profile)
 
-        config.profiles = profiles
-        return config
+            return config
+    except Exception:
+        return None
